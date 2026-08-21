@@ -1,6 +1,7 @@
+import os
 import sys, warnings, json, numpy as np
 warnings.filterwarnings('ignore')
-sys.path.insert(0, '/home/claude/hvdc_fixed')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from hvdc_signal_generator import build_dataset
 from hvdc_models import (prepare_sequence_features, _fit_seq_scaler, apply_seq_scaler,
@@ -31,11 +32,16 @@ def evalmodel(m, tag):
           callbacks.ReduceLROnPlateau(patience=8, factor=0.5, verbose=0)]
     hist = m.fit(X_s_train, Y_train, validation_data=(X_s_val, Y_val),
                  epochs=150, batch_size=64, class_weight=cw, callbacks=cb, verbose=0)
-    yp = np.argmax(m.predict(X_s_test, verbose=0), axis=1)
-    acc = accuracy_score(Y_test_, yp); f1 = f1_score(Y_test_, yp, average='macro')
-    print(f"{tag}: test_acc={acc:.4f} f1={f1:.4f} epochs={len(hist.history['loss'])}")
-    print("  per-class recall:", (confusion_matrix(Y_test_, yp, normalize='true').diagonal()).round(2))
-    return acc
+    # Selection criterion: VALIDATION accuracy only (test set is not touched
+    # for model/architecture selection -- fixes a leakage issue where an
+    # earlier version of this script selected between configurations using
+    # test-set accuracy, flagged in external review).
+    yp_val = np.argmax(m.predict(X_s_val, verbose=0), axis=1)
+    val_acc = accuracy_score(Y_val, yp_val)
+    print(f"{tag}: VAL_acc={val_acc:.4f} epochs={len(hist.history['loss'])}")
+    return m, val_acc
+
+configs = {}
 
 # Config A: lower LR, no BN, GAP -> wider dense
 inp = keras.Input(shape=input_shape)
@@ -48,7 +54,8 @@ x = layers.Dropout(0.3)(x)
 out = layers.Dense(N_CLASSES, activation='softmax')(x)
 mA = keras.Model(inp, out)
 mA.compile(optimizer=keras.optimizers.Adam(3e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-evalmodel(mA, "A: no-BN, LR=3e-4, plain conv stack")
+mA, val_acc_A = evalmodel(mA, "A: no-BN, LR=3e-4, plain conv stack")
+configs['A'] = (mA, val_acc_A)
 
 # Config B: keep dilation but lower LR + more patience + no BN
 inp = keras.Input(shape=input_shape)
@@ -61,4 +68,16 @@ x = layers.Dropout(0.3)(x)
 out = layers.Dense(N_CLASSES, activation='softmax')(x)
 mB = keras.Model(inp, out)
 mB.compile(optimizer=keras.optimizers.Adam(3e-4), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-evalmodel(mB, "B: dilated, no-BN, LR=3e-4")
+mB, val_acc_B = evalmodel(mB, "B: dilated, no-BN, LR=3e-4")
+configs['B'] = (mB, val_acc_B)
+
+winner_name = max(configs, key=lambda k: configs[k][1])
+winner_model, winner_val_acc = configs[winner_name]
+print(f"\nSelected config: {winner_name} (validation accuracy={winner_val_acc:.4f})")
+
+# Test set touched exactly once, only for the already-selected winner.
+yp_test = np.argmax(winner_model.predict(X_s_test, verbose=0), axis=1)
+test_acc = accuracy_score(Y_test_, yp_test)
+test_f1  = f1_score(Y_test_, yp_test, average='macro')
+print(f"Winner ({winner_name}) held-out test accuracy: {test_acc:.4f}  F1={test_f1:.4f}")
+print("Per-class recall:", confusion_matrix(Y_test_, yp_test, normalize='true').diagonal().round(3))
