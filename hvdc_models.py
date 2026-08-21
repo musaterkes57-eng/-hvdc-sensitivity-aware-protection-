@@ -1,12 +1,12 @@
 """
-HVDC Protection — AI/ML Model Comparison Pipeline
+HVDC Protection â€” AI/ML Model Comparison Pipeline
 ===================================================
 Models implemented:
-  1. SVM          — classical ML baseline  [115, 127, 256]
-  2. Random Forest— ensemble baseline      [139, 394]
-  3. 1D-CNN       — deep learning          [27, 129, 177]
-  4. LSTM         — recurrent DL           [133, 174, 355]
-  5. CNN-LSTM     — hybrid deep learning   [212, 370]
+  1. SVM          â€” classical ML baseline  [115, 127, 256]
+  2. Random Forestâ€” ensemble baseline      [139, 394]
+  3. 1D-CNN       â€” deep learning          [27, 129, 177]
+  4. LSTM         â€” recurrent DL           [133, 174, 355]
+  5. CNN-LSTM     â€” hybrid deep learning   [212, 370]
 
 Training protocol follows [335]:
   - 70 / 15 / 15 train/val/test split (stratified)
@@ -45,7 +45,7 @@ FAULT_NAMES = ["Normal", "P2G", "P2P", "DP2G", "Comm.Fault", "Lightning"]
 N_CLASSES   = 6
 
 
-# ── Feature preparation ──────────────────────────────────────────────────────
+# â”€â”€ Feature preparation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def prepare_flat_features(X, Y):
     """
@@ -97,7 +97,7 @@ def prepare_sequence_features(X, Y, n_steps=200):
     return X_ds.astype(np.float32), Y
 
 
-# ── Model definitions ─────────────────────────────────────────────────────────
+# â”€â”€ Model definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def build_svm(C=10.0, kernel='rbf', gamma='scale'):
     """SVM with RBF kernel. C=10 optimal range from [115, 127]."""
@@ -115,23 +115,28 @@ def build_rf(n_estimators=300, max_depth=None):
 
 def build_1dcnn(input_shape, n_classes=N_CLASSES):
     """
-    1D-CNN architecture per [27, 177]:
-      Conv1D(64) → Conv1D(64, dilated) → Conv1D(128, dilated) → GAP → Dense → Softmax
-    Dilated convolutions for multi-scale feature capture [151].
+    1D-CNN architecture, selected via a validation-only A/B comparison
+    (tune_cnn.py) after an external review correctly flagged that an
+    earlier version of this comparison used test-set accuracy for
+    selection (data leakage). Under the corrected, validation-only
+    selection criterion, this plain (non-dilated) three-layer conv
+    stack outperformed a dilated variant on validation accuracy
+    (98.89% vs 98.33%) and is therefore the adopted architecture.
 
-    NOTE: an earlier version of this architecture included
+    Conv1D(32,k7) -> Conv1D(64,k5) -> Conv1D(64,k3) -> GAP -> Dense(64)
+    -> Dropout(0.3) -> Softmax. No BatchNormalization (see note below).
+
+    NOTE: a still-earlier version of this architecture included
     BatchNormalization after each conv layer and used lr=1e-3. On this
     dataset size that combination destabilized training and the model
     collapsed to a near-constant prediction (test accuracy ~17%, i.e.
     random for 6 classes). Removing BatchNormalization and lowering the
-    learning rate to 3e-4 was verified (via a controlled A/B comparison,
-    see tune_cnn.py) to recover stable training (test accuracy ~98.9%)
-    without changing the conceptual architecture.
+    learning rate to 3e-4 recovered stable training.
     """
     inp = keras.Input(shape=input_shape)
-    x   = layers.Conv1D(64, 7, padding='same', activation='relu')(inp)
-    x   = layers.Conv1D(64, 5, padding='same', dilation_rate=2, activation='relu')(x)
-    x   = layers.Conv1D(128, 3, padding='same', dilation_rate=4, activation='relu')(x)
+    x   = layers.Conv1D(32, 7, padding='same', activation='relu')(inp)
+    x   = layers.Conv1D(64, 5, padding='same', activation='relu')(x)
+    x   = layers.Conv1D(64, 3, padding='same', activation='relu')(x)
     x   = layers.GlobalAveragePooling1D()(x)
     x   = layers.Dense(64, activation='relu')(x)
     x   = layers.Dropout(0.3)(x)
@@ -145,7 +150,7 @@ def build_1dcnn(input_shape, n_classes=N_CLASSES):
 def build_lstm(input_shape, n_classes=N_CLASSES):
     """
     LSTM architecture per [133, 174]:
-      BiLSTM(64) → LSTM(64) → Dense → Softmax
+      BiLSTM(64) â†’ LSTM(64) â†’ Dense â†’ Softmax
     Bidirectional layer improves detection of pre/post-fault transitions [141].
     """
     inp = keras.Input(shape=input_shape)
@@ -164,7 +169,7 @@ def build_lstm(input_shape, n_classes=N_CLASSES):
 def build_cnn_lstm(input_shape, n_classes=N_CLASSES):
     """
     Hybrid CNN-LSTM per [212, 370]:
-      CNN encodes local patterns → LSTM models temporal evolution.
+      CNN encodes local patterns â†’ LSTM models temporal evolution.
     Multi-head attention added per [370] for discriminative feature focus.
     """
     inp  = keras.Input(shape=input_shape)
@@ -188,7 +193,7 @@ def build_cnn_lstm(input_shape, n_classes=N_CLASSES):
     return m
 
 
-# ── Training utilities ────────────────────────────────────────────────────────
+# â”€â”€ Training utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_class_weights(Y_train):
     cw  = compute_class_weight('balanced', classes=np.unique(Y_train), y=Y_train)
@@ -245,7 +250,7 @@ def train_dl(model, X_train, Y_train, X_val, Y_val, epochs=150, name="DL"):
                    'y_prob': Y_prob, 'history': hist.history}
 
 
-# ── Main training run ─────────────────────────────────────────────────────────
+# â”€â”€ Main training run â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _fit_seq_scaler(X_train_seq):
     """Per-channel (voltage, current) mean/std computed on the training
@@ -267,20 +272,20 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
     Returns dict of results.
     """
     print("=" * 60)
-    print("HVDC Protection — Baseline Model Comparison")
+    print("HVDC Protection â€” Baseline Model Comparison")
     print("=" * 60)
 
-    # ── Split ────────────────────────────────────────────────────────────────
+    # â”€â”€ Split â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     X_tr_v, X_test, Y_tr_v, Y_test = train_test_split(
         X, Y, test_size=test_size, stratify=Y, random_state=seed)
     X_train, X_val, Y_train, Y_val = train_test_split(
         X_tr_v, Y_tr_v, test_size=val_size / (1 - test_size),
         stratify=Y_tr_v, random_state=seed)
 
-    print(f"\nSplit sizes — Train: {len(X_train)}  Val: {len(X_val)}  "
+    print(f"\nSplit sizes â€” Train: {len(X_train)}  Val: {len(X_val)}  "
           f"Test: {len(X_test)}")
 
-    # ── Flat features for classical ML ────────────────────────────────────────
+    # â”€â”€ Flat features for classical ML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n[Preparing flat features for SVM / RF ...]")
     X_flat, _ = prepare_flat_features(X, Y)
     X_f_tr_v, X_f_test, _, _ = train_test_split(
@@ -289,7 +294,7 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
         X_f_tr_v, Y_tr_v, test_size=val_size / (1 - test_size),
         stratify=Y_tr_v, random_state=seed)
 
-    # ── Sequence features for DL ──────────────────────────────────────────────
+    # â”€â”€ Sequence features for DL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     X_seq, _ = prepare_sequence_features(X, Y, n_steps=200)
     X_s_tr_v, X_s_test, _, _ = train_test_split(
         X_seq, Y, test_size=test_size, stratify=Y, random_state=seed)
@@ -306,7 +311,7 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
     scalers  = {'_seq_scaler': seq_scaler}
     models_  = {}
 
-    # ── SVM ───────────────────────────────────────────────────────────────────
+    # â”€â”€ SVM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n[1/5] SVM (RBF, C=10)")
     svm_m, svm_sc, res_svm = train_classical(
         build_svm(), X_f_train, Yf_train, X_f_val, Yf_val, name="SVM")
@@ -321,7 +326,7 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
     models_['SVM'] = svm_m
     print(f"      Test Acc={res_svm['test_acc']:.4f}  F1={res_svm['test_f1']:.4f}")
 
-    # ── Random Forest ─────────────────────────────────────────────────────────
+    # â”€â”€ Random Forest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n[2/5] Random Forest (n=300)")
     rf_m, rf_sc, res_rf = train_classical(
         build_rf(), X_f_train, Yf_train, X_f_val, Yf_val, name="RF")
@@ -335,7 +340,7 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
     models_['RF'] = rf_m
     print(f"      Test Acc={res_rf['test_acc']:.4f}  F1={res_rf['test_f1']:.4f}")
 
-    # ── 1D-CNN ────────────────────────────────────────────────────────────────
+    # â”€â”€ 1D-CNN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n[3/5] 1D-CNN")
     input_shape = X_s_train.shape[1:]
     cnn_m, res_cnn = train_dl(
@@ -351,7 +356,7 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
     models_['CNN'] = cnn_m
     print(f"      Test Acc={res_cnn['test_acc']:.4f}  F1={res_cnn['test_f1']:.4f}")
 
-    # ── LSTM ──────────────────────────────────────────────────────────────────
+    # â”€â”€ LSTM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n[4/5] LSTM (Bidirectional)")
     lstm_m, res_lstm = train_dl(
         build_lstm(input_shape), X_s_train, Ys_train, X_s_val, Ys_val,
@@ -366,7 +371,7 @@ def run_baseline_comparison(X, Y, test_size=0.15, val_size=0.15, seed=42):
     models_['LSTM'] = lstm_m
     print(f"      Test Acc={res_lstm['test_acc']:.4f}  F1={res_lstm['test_f1']:.4f}")
 
-    # ── CNN-LSTM ──────────────────────────────────────────────────────────────
+    # â”€â”€ CNN-LSTM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n[5/5] CNN-LSTM Hybrid")
     cl_m, res_cl = train_dl(
         build_cnn_lstm(input_shape), X_s_train, Ys_train, X_s_val, Ys_val,
