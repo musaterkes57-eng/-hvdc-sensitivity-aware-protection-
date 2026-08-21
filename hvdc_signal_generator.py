@@ -164,6 +164,11 @@ def generate_fault_signal(fault_type, R_fault=0.0, fault_location_frac=0.5,
     # ── Current signal ────────────────────────────────────────────────────────
     i = np.zeros(N)
     i[~mask] = 1.0   # nominal load current (p.u.)
+    i[mask]  = 1.0   # load current persists continuously into the fault window;
+                      # fault-transient stages below superimpose on this baseline
+                      # rather than replacing it, avoiding an artificial 1.0->0
+                      # discontinuity at t=0+ in what is a physically inductive
+                      # circuit.
 
     if fault_type == 0:
         i = np.ones(N) + 0.02 * np.sin(2 * np.pi * 100 * t)
@@ -172,12 +177,26 @@ def generate_fault_signal(fault_type, R_fault=0.0, fault_location_frac=0.5,
         i_stage1 = _damped_oscillation(dt[mask], V_DC * tw_atten,
                                         R_eff, L_eff, C_eff)
         I_peak   = np.max(np.abs(i_stage1)) if len(i_stage1) > 0 else 1.0
+        I_peak_norm = I_peak / (V_DC / Z0)
         t2_mask  = (dt >= 3e-3) & mask
         t3_mask  = (dt >= 6e-3) & mask
-        i[mask]  += i_stage1 / (V_DC / Z0)          # normalize
+        i[mask]  += i_stage1 / (V_DC / Z0)          # Stage 1: capacitor discharge
+        # Stage 2: diode freewheeling. I_peak/t2_mask were previously computed
+        # but never applied (dead code) -- an external code review correctly
+        # flagged that the three-stage model claimed in the docstring/paper
+        # was not actually implemented. Wired in here for all DC-side fault
+        # types.
+        i[t2_mask] += _freewheeling(dt[t2_mask] - 3e-3, I_peak_norm) * tw_atten
+        # Stage 3: AC grid current infeed. Previously applied only to P2G;
+        # now applied to all three DC-side fault types (type-specific
+        # magnitude), consistent with the three-stage description.
         if fault_type == 1:
             I_ac = 1.2 / (1 + R_fault / 100)
-            i[t3_mask] += _ac_infeed(dt[t3_mask] - 6e-3, I_ac) * tw_atten
+        elif fault_type == 2:
+            I_ac = 1.5 / (1 + R_fault / 500)
+        else:
+            I_ac = 1.0 / (1 + R_fault / 300)
+        i[t3_mask] += _ac_infeed(dt[t3_mask] - 6e-3, I_ac) * tw_atten
         if fault_type == 3:
             i[mask] *= (1 + 0.2 * rng.standard_normal(np.sum(mask)) * 0.1)
 
