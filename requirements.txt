@@ -1,0 +1,20 @@
+# Package list for musaterkes57-eng/-hvdc-sensitivity-aware-protection-
+#
+# IMPORTANT: the versions below are a reasonable, mutually-compatible starting
+# point for Python 3.12, but they are NOT copied from your own working
+# environment (I do not have access to it). Before uploading this file,
+# please run the following in the environment where you actually produced
+# corrected_results.json, and replace the lines below with that output:
+#
+#   pip freeze | grep -iE "numpy|scipy|scikit-learn|tensorflow|pywavelets|matplotlib|pandas"
+#
+# This ensures the manuscript's "exact package versions pinned in
+# requirements.txt" statement is literally true.
+
+numpy>=1.26,<2.0
+scipy>=1.11
+scikit-learn>=1.3
+tensorflow>=2.15,<2.17
+PyWavelets>=1.4
+matplotlib>=3.8
+pandas>=2.0
