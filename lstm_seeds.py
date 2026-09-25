@@ -1,6 +1,9 @@
 import sys, warnings, json, numpy as np
+from pathlib import Path
 warnings.filterwarnings('ignore')
-sys.path.insert(0, '/home/claude/hvdc_fixed')
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
 
 from hvdc_signal_generator import build_dataset
 from hvdc_models import (prepare_sequence_features, _fit_seq_scaler, apply_seq_scaler,
@@ -42,5 +45,7 @@ print(f"\nMean acc={np.mean(accs):.4f} +/- {np.std(accs):.4f}")
 print(f"Mean f1 ={np.mean(f1s):.4f} +/- {np.std(f1s):.4f}")
 print(f"Lightning recall values: {lightning_recall}")
 
+OUTPUT_FILE = ROOT / "lstm_seed_check.json"
 json.dump({'accs': accs, 'f1s': f1s, 'lightning_recall': lightning_recall},
-          open('/home/claude/hvdc_fixed/lstm_seed_check.json', 'w'))
+          open(OUTPUT_FILE, 'w'))
+print(f"Saved {OUTPUT_FILE}")
