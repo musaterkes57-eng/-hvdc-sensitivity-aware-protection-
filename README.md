@@ -40,4 +40,4 @@ confusion-matrix script that had pre-set target accuracies in its own
 docstring).
 
 ## License
-MIT (suggested — adjust to your institution's policy before publishing).
+License: MIT
